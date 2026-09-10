@@ -1,17 +1,59 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.2.0
-// @description  Adds a Mass Download button that logs post links from the first page.
+// @version      1.3.0
+// @description  Downloads five posts from the first page using their image tags as filenames.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
 // @updateURL    https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
 // @downloadURL  https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      rule34.xxx
+// @connect      www.rule34.xxx
+// @connect      wimg.rule34.xxx
 // ==/UserScript==
 
 (function () {
     'use strict';
+
+    const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+    function request(url, responseType = 'text') {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                responseType,
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        resolve(responseType === 'blob' ? response.response : response.responseText);
+                    } else {
+                        reject(new Error(`Request failed with status ${response.status}`));
+                    }
+                },
+                onerror: () => reject(new Error(`Could not fetch ${url}`))
+            });
+        });
+    }
+
+    function filenameFromAlt(alt, imageUrl) {
+        const tags = alt.trim().replace(/\s+/g, ' ');
+        const extension = new URL(imageUrl).pathname.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg';
+        const safeTags = tags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180) || 'rule34-image';
+        return `${safeTags}${extension}`;
+    }
+
+    function downloadBlob(blob, filename) {
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = objectUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    }
 
     function addMassDownloadButton() {
         const tosLink = [...document.querySelectorAll('#subnavbar a')]
@@ -31,7 +73,7 @@
         button.addEventListener('click', async (event) => {
             event.preventDefault();
 
-            if (!window.confirm('Fetch the first page and log its post links?')) {
+            if (!window.confirm('Download the first five posts from the first page?')) {
                 return;
             }
 
@@ -39,22 +81,34 @@
             requestUrl.searchParams.set('pid', '0');
 
             try {
-                const response = await fetch(requestUrl.href, {
-                    credentials: 'include'
-                });
+                const html = await request(requestUrl.href);
+                const page = new DOMParser().parseFromString(html, 'text/html');
+                const links = [...page.querySelectorAll('.image-list a[href]')].slice(0, 5);
 
-                if (!response.ok) {
-                    throw new Error(`Request failed with status ${response.status}`);
+                for (const [index, link] of links.entries()) {
+                    if (index > 0) {
+                        await wait(1000);
+                    }
+
+                    const postUrl = new URL(link.getAttribute('href'), requestUrl.href).href;
+                    const postHtml = await request(postUrl);
+                    const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
+                    const image = postPage.querySelector('#image');
+
+                    if (!image?.getAttribute('src') || !image.alt) {
+                        console.warn(`No downloadable image found at ${postUrl}`);
+                        continue;
+                    }
+
+                    const imageUrl = new URL(image.getAttribute('src'), postUrl).href;
+                    const imageBlob = await request(imageUrl, 'blob');
+                    downloadBlob(imageBlob, filenameFromAlt(image.alt, imageUrl));
+                    console.log(`Downloaded ${index + 1}/${links.length}: ${postUrl}`);
                 }
 
-                const html = await response.text();
-                const page = new DOMParser().parseFromString(html, 'text/html');
-                const links = page.querySelectorAll('.image-list a[href]');
-
-                links.forEach((link) => console.log(link.getAttribute('href')));
-                console.log(`Logged ${links.length} post link(s) from ${requestUrl.href}`);
+                console.log(`Finished processing ${links.length} post link(s).`);
             } catch (error) {
-                console.error('Mass Download could not read the first page:', error);
+                console.error('Mass Download stopped:', error);
             }
         });
 
