@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      2.3.0
+// @version      2.4.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -9,6 +9,9 @@
 // @downloadURL  https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @connect      rule34.xxx
 // @connect      www.rule34.xxx
 // @connect      wimg.rule34.xxx
@@ -18,7 +21,7 @@
 (function () {
     'use strict';
 
-    const requestDelay = 1000;
+    const requestDelay = 2500;
     let requestCount = 0;
 
     const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -111,6 +114,11 @@
         }
     }
 
+    function progressKey(requestUrl) {
+        const tags = requestUrl.searchParams.get('tags') || 'rule34-media';
+        return `mass-download:${requestUrl.origin}${requestUrl.pathname}:${tags}`;
+    }
+
     function addMassDownloadButton() {
         const tosLink = [...document.querySelectorAll('#subnavbar a')]
             .find((link) => link.textContent.trim() === 'TOS');
@@ -136,11 +144,29 @@
             requestCount = 0;
             const requestUrl = new URL(window.location.href);
             const downloadFolder = folderNameFromTags(requestUrl.searchParams.get('tags') || 'rule34-media');
-            let pid = 0;
+            const storageKey = progressKey(requestUrl);
+            const savedProgress = GM_getValue(storageKey, null);
+            let progress = savedProgress || { pid: 0, linkIndex: 0 };
+
+            if (savedProgress) {
+                const shouldContinue = window.confirm(
+                    `You have an unfinished mass download for tags "${requestUrl.searchParams.get('tags') || 'rule34-media'}".\n\n` +
+                    `Continue from pid=${savedProgress.pid}, post ${savedProgress.linkIndex + 1}?\n\n` +
+                    'Choose OK to continue or Cancel to delete it and start over later.'
+                );
+
+                if (!shouldContinue) {
+                    GM_deleteValue(storageKey);
+                    console.log('Cancelled and deleted the unfinished mass download.');
+                    return;
+                }
+            }
 
             try {
                 while (true) {
+                    const pid = progress.pid;
                     requestUrl.searchParams.set('pid', String(pid));
+                    GM_setValue(storageKey, progress);
                     const html = await requestWithRetry(requestUrl.href);
                     const page = new DOMParser().parseFromString(html, 'text/html');
 
@@ -149,10 +175,13 @@
 
                     if (!imageList || links.length === 0) {
                         console.log(`Finished: no post links found at pid=${pid}.`);
+                        GM_deleteValue(storageKey);
                         return;
                     }
 
-                    for (const link of links) {
+                    const firstLinkIndex = pid === progress.pid ? progress.linkIndex : 0;
+                    for (let linkIndex = firstLinkIndex; linkIndex < links.length; linkIndex += 1) {
+                        const link = links[linkIndex];
                         const postUrl = new URL(link.getAttribute('href'), requestUrl.href).href;
                         const postHtml = await requestWithRetry(postUrl);
                         const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
@@ -180,10 +209,19 @@
 
                         const filename = filenameFromTags(tags, mediaUrl);
                         downloadMedia(mediaUrl, downloadFolder, filename);
+                        progress = {
+                            pid,
+                            linkIndex: linkIndex + 1
+                        };
+                        GM_setValue(storageKey, progress);
                         console.log(`Downloaded: ${postUrl}`);
                     }
 
-                    pid += 42;
+                    progress = {
+                        pid: pid + 42,
+                        linkIndex: 0
+                    };
+                    GM_setValue(storageKey, progress);
                 }
             } catch (error) {
                 console.error('Mass Download stopped:', error);
