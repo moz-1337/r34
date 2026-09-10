@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.7.0
+// @version      1.8.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -51,14 +51,14 @@
     }
 
     function filenameFromTags(tags, mediaUrl) {
-        const normalizedTags = tags.trim().replace(/\s+/g, ' ');
+        const normalizedTags = folderNameFromTags(tags).slice(0, 120);
         const extension = new URL(mediaUrl).pathname.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg';
         return `${normalizedTags}${extension}`;
     }
 
     function folderNameFromTags(tags) {
         const normalizedTags = tags.trim().replace(/\s+/g, ' ');
-        return normalizedTags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180) || 'rule34-media';
+        return normalizedTags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120) || 'rule34-media';
     }
 
     function downloadMedia(mediaUrl, folderName, filename) {
