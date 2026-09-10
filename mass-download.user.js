@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      2.1.0
+// @version      2.2.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -24,6 +24,21 @@
     const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
     function request(url, responseType = 'text') {
+        if (responseType === 'text' && new URL(url).origin === window.location.origin) {
+            return fetch(url, {
+                credentials: 'include',
+                cache: 'no-store'
+            }).then(async (response) => {
+                if (!response.ok) {
+                    const error = new Error(`Request failed with status ${response.status}`);
+                    error.status = response.status;
+                    throw error;
+                }
+
+                return response.text();
+            });
+        }
+
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
