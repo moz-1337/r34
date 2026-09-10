@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.5.0
-// @description  Downloads every post image from each page using image tags as filenames.
+// @version      1.6.0
+// @description  Downloads every post image or video using its tags as the filename.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
 // @updateURL    https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
@@ -11,6 +11,7 @@
 // @connect      rule34.xxx
 // @connect      www.rule34.xxx
 // @connect      wimg.rule34.xxx
+// @connect      ahrimp4.rule34.xxx
 // ==/UserScript==
 
 (function () {
@@ -48,10 +49,10 @@
         return request(url, responseType);
     }
 
-    function filenameFromAlt(alt, imageUrl) {
-        const tags = alt.trim().replace(/\s+/g, ' ');
-        const extension = new URL(imageUrl).pathname.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg';
-        const safeTags = tags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180) || 'rule34-image';
+    function filenameFromTags(tags, mediaUrl) {
+        const normalizedTags = tags.trim().replace(/\s+/g, ' ');
+        const extension = new URL(mediaUrl).pathname.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg';
+        const safeTags = normalizedTags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180) || 'rule34-media';
         return `${safeTags}${extension}`;
     }
 
@@ -113,15 +114,28 @@
                         const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
 
                         const image = postPage.querySelector('#image[alt][src]');
+                        const video = postPage.querySelector('video source[src]');
 
-                        if (!image) {
-                            console.warn(`Stopped at ${postUrl}: no downloadable image with alt text was found.`);
+                        if (!image && !video) {
+                            console.warn(`Stopped at ${postUrl}: no downloadable image or video was found.`);
                             return;
                         }
 
-                        const imageUrl = new URL(image.getAttribute('src'), postUrl).href;
-                        const imageBlob = await pacedRequest(imageUrl, 'blob');
-                        downloadBlob(imageBlob, filenameFromAlt(image.alt, imageUrl));
+                        const mediaUrl = new URL(
+                            image ? image.getAttribute('src') : video.getAttribute('src'),
+                            postUrl
+                        ).href;
+                        const tags = image
+                            ? image.alt
+                            : postPage.querySelector('#tags')?.value || postPage.querySelector('#tags')?.textContent || '';
+
+                        if (!tags.trim()) {
+                            console.warn(`Stopped at ${postUrl}: no tags were found for the filename.`);
+                            return;
+                        }
+
+                        const mediaBlob = await pacedRequest(mediaUrl, 'blob');
+                        downloadBlob(mediaBlob, filenameFromTags(tags, mediaUrl));
                         console.log(`Downloaded: ${postUrl}`);
                     }
 
