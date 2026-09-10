@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.6.0
-// @description  Downloads every post image or video using its tags as the filename.
+// @version      1.7.0
+// @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
 // @updateURL    https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
 // @downloadURL  https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
 // @grant        GM_xmlhttpRequest
+// @grant        GM_download
 // @connect      rule34.xxx
 // @connect      www.rule34.xxx
 // @connect      wimg.rule34.xxx
@@ -52,20 +53,25 @@
     function filenameFromTags(tags, mediaUrl) {
         const normalizedTags = tags.trim().replace(/\s+/g, ' ');
         const extension = new URL(mediaUrl).pathname.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg';
-        const safeTags = normalizedTags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180) || 'rule34-media';
-        return `${safeTags}${extension}`;
+        return `${normalizedTags}${extension}`;
     }
 
-    function downloadBlob(blob, filename) {
-        const objectUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
+    function folderNameFromTags(tags) {
+        const normalizedTags = tags.trim().replace(/\s+/g, ' ');
+        return normalizedTags.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180) || 'rule34-media';
+    }
 
-        link.href = objectUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    function downloadMedia(mediaUrl, folderName, filename) {
+        return new Promise((resolve, reject) => {
+            GM_download({
+                url: mediaUrl,
+                name: `${folderName}/${filename}`,
+                saveAs: false,
+                onload: resolve,
+                onerror: (error) => reject(new Error(`Could not download ${mediaUrl}: ${error.error}`)),
+                onabort: () => reject(new Error(`Download aborted: ${mediaUrl}`))
+            });
+        });
     }
 
     function addMassDownloadButton() {
@@ -134,8 +140,9 @@
                             return;
                         }
 
-                        const mediaBlob = await pacedRequest(mediaUrl, 'blob');
-                        downloadBlob(mediaBlob, filenameFromTags(tags, mediaUrl));
+                        const folderName = folderNameFromTags(tags);
+                        const filename = filenameFromTags(tags, mediaUrl);
+                        await downloadMedia(mediaUrl, folderName, filename);
                         console.log(`Downloaded: ${postUrl}`);
                     }
 
