@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.4.0
+// @version      1.5.0
 // @description  Downloads every post image from each page using image tags as filenames.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -46,11 +46,6 @@
 
         requestCount += 1;
         return request(url, responseType);
-    }
-
-    function isBlockedPage(page) {
-        const pageText = `${page.title} ${page.body?.textContent || ''}`.toLowerCase();
-        return /(too many requests|rate limit|rate-limited|access denied|temporarily blocked|cloudflare|captcha|checking your browser|just a moment)/i.test(pageText);
     }
 
     function filenameFromAlt(alt, imageUrl) {
@@ -104,11 +99,6 @@
                     const html = await pacedRequest(requestUrl.href);
                     const page = new DOMParser().parseFromString(html, 'text/html');
 
-                    if (isBlockedPage(page)) {
-                        console.warn(`Stopped at pid=${pid}: the response looks rate-limited or blocked.`);
-                        return;
-                    }
-
                     const imageList = page.querySelector('.image-list');
                     const links = imageList ? [...imageList.querySelectorAll('a[href]')] : [];
 
@@ -121,11 +111,6 @@
                         const postUrl = new URL(link.getAttribute('href'), requestUrl.href).href;
                         const postHtml = await pacedRequest(postUrl);
                         const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
-
-                        if (isBlockedPage(postPage)) {
-                            console.warn(`Stopped at ${postUrl}: the response looks rate-limited or blocked.`);
-                            return;
-                        }
 
                         const image = postPage.querySelector('#image[alt][src]');
 
