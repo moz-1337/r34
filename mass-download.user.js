@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      2.2.0
+// @version      2.3.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -18,7 +18,7 @@
 (function () {
     'use strict';
 
-    const requestDelay = 500;
+    const requestDelay = 1000;
     let requestCount = 0;
 
     const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
