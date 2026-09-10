@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      2.0.0
+// @version      2.1.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -33,7 +33,9 @@
                     if (response.status >= 200 && response.status < 300) {
                         resolve(responseType === 'blob' ? response.response : response.responseText);
                     } else {
-                        reject(new Error(`Request failed with status ${response.status}`));
+                        const error = new Error(`Request failed with status ${response.status}`);
+                        error.status = response.status;
+                        reject(error);
                     }
                 },
                 onerror: () => reject(new Error(`Could not fetch ${url}`))
@@ -48,6 +50,24 @@
 
         requestCount += 1;
         return request(url, responseType);
+    }
+
+    async function requestWithRetry(url, responseType = 'text') {
+        let retryDelay = 1000;
+
+        while (true) {
+            try {
+                return await pacedRequest(url, responseType);
+            } catch (error) {
+                if (error.status !== 429) {
+                    throw error;
+                }
+
+                console.warn(`Received HTTP 429. Retrying in ${retryDelay / 1000} second(s): ${url}`);
+                await wait(retryDelay);
+                retryDelay += 1000;
+            }
+        }
     }
 
     function filenameFromTags(tags, mediaUrl) {
@@ -106,7 +126,7 @@
             try {
                 while (true) {
                     requestUrl.searchParams.set('pid', String(pid));
-                    const html = await pacedRequest(requestUrl.href);
+                    const html = await requestWithRetry(requestUrl.href);
                     const page = new DOMParser().parseFromString(html, 'text/html');
 
                     const imageList = page.querySelector('.image-list');
@@ -119,7 +139,7 @@
 
                     for (const link of links) {
                         const postUrl = new URL(link.getAttribute('href'), requestUrl.href).href;
-                        const postHtml = await pacedRequest(postUrl);
+                        const postHtml = await requestWithRetry(postUrl);
                         const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
 
                         const image = postPage.querySelector('#image[alt][src]');
