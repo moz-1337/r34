@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.3.0
-// @description  Downloads five posts from the first page using their image tags as filenames.
+// @version      1.4.0
+// @description  Downloads every post image from each page using image tags as filenames.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
 // @updateURL    https://raw.githubusercontent.com/moz-1337/r34/main/mass-download.user.js
@@ -15,6 +15,9 @@
 
 (function () {
     'use strict';
+
+    const requestDelay = 500;
+    let requestCount = 0;
 
     const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -34,6 +37,20 @@
                 onerror: () => reject(new Error(`Could not fetch ${url}`))
             });
         });
+    }
+
+    async function pacedRequest(url, responseType = 'text') {
+        if (requestCount > 0) {
+            await wait(requestDelay);
+        }
+
+        requestCount += 1;
+        return request(url, responseType);
+    }
+
+    function isBlockedPage(page) {
+        const pageText = `${page.title} ${page.body?.textContent || ''}`.toLowerCase();
+        return /(too many requests|rate limit|rate-limited|access denied|temporarily blocked|cloudflare|captcha|checking your browser|just a moment)/i.test(pageText);
     }
 
     function filenameFromAlt(alt, imageUrl) {
@@ -73,40 +90,58 @@
         button.addEventListener('click', async (event) => {
             event.preventDefault();
 
-            if (!window.confirm('Download the first five posts from the first page?')) {
+            if (!window.confirm('Download every post image, starting from the first page?')) {
                 return;
             }
 
+            requestCount = 0;
             const requestUrl = new URL(window.location.href);
-            requestUrl.searchParams.set('pid', '0');
+            let pid = 0;
 
             try {
-                const html = await request(requestUrl.href);
-                const page = new DOMParser().parseFromString(html, 'text/html');
-                const links = [...page.querySelectorAll('.image-list a[href]')].slice(0, 5);
+                while (true) {
+                    requestUrl.searchParams.set('pid', String(pid));
+                    const html = await pacedRequest(requestUrl.href);
+                    const page = new DOMParser().parseFromString(html, 'text/html');
 
-                for (const [index, link] of links.entries()) {
-                    if (index > 0) {
-                        await wait(1000);
+                    if (isBlockedPage(page)) {
+                        console.warn(`Stopped at pid=${pid}: the response looks rate-limited or blocked.`);
+                        return;
                     }
 
-                    const postUrl = new URL(link.getAttribute('href'), requestUrl.href).href;
-                    const postHtml = await request(postUrl);
-                    const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
-                    const image = postPage.querySelector('#image');
+                    const imageList = page.querySelector('.image-list');
+                    const links = imageList ? [...imageList.querySelectorAll('a[href]')] : [];
 
-                    if (!image?.getAttribute('src') || !image.alt) {
-                        console.warn(`No downloadable image found at ${postUrl}`);
-                        continue;
+                    if (!imageList || links.length === 0) {
+                        console.log(`Finished: no post links found at pid=${pid}.`);
+                        return;
                     }
 
-                    const imageUrl = new URL(image.getAttribute('src'), postUrl).href;
-                    const imageBlob = await request(imageUrl, 'blob');
-                    downloadBlob(imageBlob, filenameFromAlt(image.alt, imageUrl));
-                    console.log(`Downloaded ${index + 1}/${links.length}: ${postUrl}`);
+                    for (const link of links) {
+                        const postUrl = new URL(link.getAttribute('href'), requestUrl.href).href;
+                        const postHtml = await pacedRequest(postUrl);
+                        const postPage = new DOMParser().parseFromString(postHtml, 'text/html');
+
+                        if (isBlockedPage(postPage)) {
+                            console.warn(`Stopped at ${postUrl}: the response looks rate-limited or blocked.`);
+                            return;
+                        }
+
+                        const image = postPage.querySelector('#image[alt][src]');
+
+                        if (!image) {
+                            console.warn(`Stopped at ${postUrl}: no downloadable image with alt text was found.`);
+                            return;
+                        }
+
+                        const imageUrl = new URL(image.getAttribute('src'), postUrl).href;
+                        const imageBlob = await pacedRequest(imageUrl, 'blob');
+                        downloadBlob(imageBlob, filenameFromAlt(image.alt, imageUrl));
+                        console.log(`Downloaded: ${postUrl}`);
+                    }
+
+                    pid += 42;
                 }
-
-                console.log(`Finished processing ${links.length} post link(s).`);
             } catch (error) {
                 console.error('Mass Download stopped:', error);
             }
