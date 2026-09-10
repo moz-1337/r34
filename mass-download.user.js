@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      1.9.0
+// @version      2.0.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -62,16 +62,18 @@
     }
 
     function downloadMedia(mediaUrl, folderName, filename) {
-        return new Promise((resolve, reject) => {
+        try {
             GM_download({
                 url: mediaUrl,
                 name: `${folderName}/${filename}`,
                 saveAs: false,
-                onload: resolve,
-                onerror: (error) => reject(new Error(`Could not download ${mediaUrl}: ${error.error}`)),
-                onabort: () => reject(new Error(`Download aborted: ${mediaUrl}`))
+                onload: () => console.log(`Download finished: ${filename}`),
+                onerror: (error) => console.error(`Could not download ${mediaUrl}: ${error.error}`),
+                onabort: () => console.warn(`Download aborted: ${mediaUrl}`)
             });
-        });
+        } catch (error) {
+            console.error(`Could not start download ${mediaUrl}:`, error);
+        }
     }
 
     function addMassDownloadButton() {
@@ -142,7 +144,7 @@
                         }
 
                         const filename = filenameFromTags(tags, mediaUrl);
-                        await downloadMedia(mediaUrl, downloadFolder, filename);
+                        downloadMedia(mediaUrl, downloadFolder, filename);
                         console.log(`Downloaded: ${postUrl}`);
                     }
 
