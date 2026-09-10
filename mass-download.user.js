@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Rule34 Mass Download Button
 // @namespace    https://rule34.xxx/
-// @version      2.5.0
+// @version      2.6.0
 // @description  Downloads every post image or video into a tags-named folder.
 // @match        https://rule34.xxx/*
 // @match        https://www.rule34.xxx/*
@@ -235,25 +235,29 @@
         tosLink.closest('li').insertAdjacentElement('afterend', item);
 
         const currentUrl = new URL(window.location.href);
-        const savedProgress = GM_getValue(progressKey(currentUrl), null);
+        const currentStorageKey = progressKey(currentUrl);
 
-        if (savedProgress) {
-            setTimeout(() => {
-                const shouldContinue = window.confirm(
-                    `You have an unfinished mass download for tags "${currentUrl.searchParams.get('tags') || 'rule34-media'}".\n\n` +
-                    `Continue from pid=${savedProgress.pid}, post ${savedProgress.linkIndex + 1}?\n\n` +
-                    'Choose OK to continue or Cancel to delete it.'
-                );
+        setTimeout(() => {
+            const savedProgress = GM_getValue(currentStorageKey, null);
 
-                if (shouldContinue) {
-                    button.dataset.resumeConfirmed = 'true';
-                    button.click();
-                } else {
-                    GM_deleteValue(progressKey(currentUrl));
-                    console.log('Cancelled and deleted the unfinished mass download.');
-                }
-            }, 0);
-        }
+            if (!savedProgress) {
+                return;
+            }
+
+            const shouldContinue = window.confirm(
+                `You have an unfinished mass download for tags "${currentUrl.searchParams.get('tags') || 'rule34-media'}".\n\n` +
+                `Continue from pid=${savedProgress.pid}, post ${savedProgress.linkIndex + 1}?\n\n` +
+                'Choose OK to continue or Cancel to delete it.'
+            );
+
+            if (shouldContinue) {
+                button.dataset.resumeConfirmed = 'true';
+                button.click();
+            } else {
+                GM_deleteValue(currentStorageKey);
+                console.log('Cancelled and deleted the unfinished mass download.');
+            }
+        }, 500);
     }
 
     if (document.readyState === 'loading') {
